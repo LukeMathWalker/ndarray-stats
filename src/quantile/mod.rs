@@ -293,6 +293,12 @@ pub trait Quantile1dExt<A, S>
         A: Ord + Clone,
         S: DataMut,
         I: Interpolate<A>;
+
+    fn quantiles_mut<I>(&mut self, qs: &[f64]) -> Option<Vec<A>>
+        where
+            A: Ord + Clone,
+            S: DataMut,
+            I: Interpolate<A>;
 }
 
 impl<A, S> Quantile1dExt<A, S> for ArrayBase<S, Ix1>
@@ -309,6 +315,24 @@ impl<A, S> Quantile1dExt<A, S> for ArrayBase<S, Ix1>
             None
         } else {
             Some(self.quantile_axis_mut::<I>(Axis(0), q).into_scalar())
+        }
+    }
+
+    fn quantiles_mut<I>(&mut self, qs: &[f64]) -> Option<Vec<A>>
+        where
+            A: Ord + Clone,
+            S: DataMut,
+            I: Interpolate<A>,
+    {
+        if self.is_empty() {
+            None
+        } else {
+            Some(
+                self.quantiles_axis_mut::<I>(Axis(0), qs)
+                    .into_iter()
+                    .map(|x| x.into_scalar())
+                    .collect()
+            )
         }
     }
 }
