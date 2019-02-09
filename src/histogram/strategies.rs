@@ -21,6 +21,7 @@
 use ndarray::prelude::*;
 use ndarray::Data;
 use num_traits::{FromPrimitive, NumOps, Zero};
+use noisy_float::types::n64;
 use super::super::{QuantileExt, Quantile1dExt};
 use super::super::interpolate::Nearest;
 use super::{Edges, Bins};
@@ -306,8 +307,8 @@ impl<T> BinsBuildingStrategy for FreedmanDiaconis<T>
         let n_points = a.len();
 
         let mut a_copy = a.to_owned();
-        let first_quartile = a_copy.quantile_mut::<Nearest>(0.25).unwrap();
-        let third_quartile = a_copy.quantile_mut::<Nearest>(0.75).unwrap();
+        let first_quartile = a_copy.quantile_mut::<Nearest>(n64(0.25)).unwrap();
+        let third_quartile = a_copy.quantile_mut::<Nearest>(n64(0.75)).unwrap();
         let iqr = third_quartile - first_quartile;
 
         let bin_width = FreedmanDiaconis::compute_bin_width(n_points, iqr);

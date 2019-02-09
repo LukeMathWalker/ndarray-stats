@@ -1,9 +1,10 @@
 use self::interpolate::Interpolate;
-use std::collections::BTreeSet;
+use super::sort::sorted_get_many_mut_unchecked;
+use std::cmp;
+use std::collections::{HashMap, BTreeSet};
+use noisy_float::types::N64;
 use ndarray::prelude::*;
 use ndarray::{Data, DataMut, RemoveAxis};
-use std::cmp;
-use super::sort::sorted_get_many_mut_unchecked;
 use {MaybeNan, MaybeNanExt};
 
 /// Quantile methods for `ArrayBase`.
@@ -84,14 +85,14 @@ where
     ///
     /// **Panics** if `axis` is out of bounds, if the axis has length 0, or if
     /// `q` is not between `0.` and `1.` (inclusive).
-    fn quantile_axis_mut<I>(&mut self, axis: Axis, q: f64) -> Array<A, D::Smaller>
+    fn quantile_axis_mut<I>(&mut self, axis: Axis, q: N64) -> Array<A, D::Smaller>
     where
         D: RemoveAxis,
         A: Ord + Clone,
         S: DataMut,
         I: Interpolate<A>;
 
-    fn quantiles_axis_mut<I>(&mut self, axis: Axis, qs: &[f64]) -> Vec<Array<A, D::Smaller>>
+    fn quantiles_axis_mut<I>(&mut self, axis: Axis, qs: &[N64]) -> HashMap<N64, Array<A, D::Smaller>>
         where
             D: RemoveAxis,
             A: Ord + Clone,
@@ -101,7 +102,7 @@ where
     /// Return the `q`th quantile of the data along the specified axis, skipping NaN values.
     ///
     /// See [`quantile_axis_mut`](##tymethod.quantile_axis_mut) for details.
-    fn quantile_axis_skipnan_mut<I>(&mut self, axis: Axis, q: f64) -> Array<A, D::Smaller>
+    fn quantile_axis_skipnan_mut<I>(&mut self, axis: Axis, q: N64) -> Array<A, D::Smaller>
     where
         D: RemoveAxis,
         A: MaybeNan,
@@ -165,16 +166,16 @@ where
         }))
     }
 
-    fn quantiles_axis_mut<I>(&mut self, axis: Axis, qs: &[f64]) -> Vec<Array<A, D::Smaller>>
+    fn quantiles_axis_mut<I>(&mut self, axis: Axis, qs: &[N64]) -> HashMap<N64, Array<A, D::Smaller>>
         where
             D: RemoveAxis,
             A: Ord + Clone,
             S: DataMut,
             I: Interpolate<A>,
     {
-        assert!(qs.iter().all(|x| (0. <= *x) && (*x <= 1.)));
+        assert!(qs.iter().all(|x| (*x >= 0.) && (*x <= 1.)));
 
-        let mut deduped_qs: Vec<f64> = qs.to_vec();
+        let mut deduped_qs: Vec<N64> = qs.to_vec();
         deduped_qs.sort_by(|a, b| a.partial_cmp(b).unwrap());
         deduped_qs.dedup();
 
@@ -195,7 +196,7 @@ where
                 |mut x| sorted_get_many_mut_unchecked(&mut x, &searched_indexes)
         );
 
-        let mut results = vec![];
+        let mut results = HashMap::new();
         for q in qs {
             let result = I::interpolate(
                 match I::needs_lower(*q, axis_len) {
@@ -215,22 +216,22 @@ where
                 *q,
                 axis_len
             );
-            results.push(result);
+            results.insert(*q, result);
         }
         results
     }
 
-    fn quantile_axis_mut<I>(&mut self, axis: Axis, q: f64) -> Array<A, D::Smaller>
+    fn quantile_axis_mut<I>(&mut self, axis: Axis, q: N64) -> Array<A, D::Smaller>
     where
         D: RemoveAxis,
         A: Ord + Clone,
         S: DataMut,
         I: Interpolate<A>,
     {
-        self.quantiles_axis_mut::<I>(axis, &[q]).into_iter().next().unwrap()
+        self.quantiles_axis_mut::<I>(axis, &[q]).into_iter().next().unwrap().1
     }
 
-    fn quantile_axis_skipnan_mut<I>(&mut self, axis: Axis, q: f64) -> Array<A, D::Smaller>
+    fn quantile_axis_skipnan_mut<I>(&mut self, axis: Axis, q: N64) -> Array<A, D::Smaller>
     where
         D: RemoveAxis,
         A: MaybeNan,
@@ -288,13 +289,13 @@ pub trait Quantile1dExt<A, S>
     /// Returns `None` if the array is empty.
     ///
     /// **Panics** if `q` is not between `0.` and `1.` (inclusive).
-    fn quantile_mut<I>(&mut self, q: f64) -> Option<A>
+    fn quantile_mut<I>(&mut self, q: N64) -> Option<A>
     where
         A: Ord + Clone,
         S: DataMut,
         I: Interpolate<A>;
 
-    fn quantiles_mut<I>(&mut self, qs: &[f64]) -> Option<Vec<A>>
+    fn quantiles_mut<I>(&mut self, qs: &[N64]) -> Option<HashMap<N64, A>>
         where
             A: Ord + Clone,
             S: DataMut,
@@ -305,7 +306,7 @@ impl<A, S> Quantile1dExt<A, S> for ArrayBase<S, Ix1>
     where
         S: Data<Elem = A>,
 {
-    fn quantile_mut<I>(&mut self, q: f64) -> Option<A>
+    fn quantile_mut<I>(&mut self, q: N64) -> Option<A>
     where
         A: Ord + Clone,
         S: DataMut,
@@ -318,7 +319,7 @@ impl<A, S> Quantile1dExt<A, S> for ArrayBase<S, Ix1>
         }
     }
 
-    fn quantiles_mut<I>(&mut self, qs: &[f64]) -> Option<Vec<A>>
+    fn quantiles_mut<I>(&mut self, qs: &[N64]) -> Option<HashMap<N64, A>>
         where
             A: Ord + Clone,
             S: DataMut,
@@ -330,7 +331,7 @@ impl<A, S> Quantile1dExt<A, S> for ArrayBase<S, Ix1>
             Some(
                 self.quantiles_axis_mut::<I>(Axis(0), qs)
                     .into_iter()
-                    .map(|x| x.into_scalar())
+                    .map(|x| (x.0, x.1.into_scalar()))
                     .collect()
             )
         }
