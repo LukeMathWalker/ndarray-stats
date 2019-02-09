@@ -150,3 +150,4 @@ fn test_quantile_axis_skipnan_mut_linear_opt_i32() {
     assert_eq!(q[0], Some(3));
     assert!(q[1].is_none());
 }
+
