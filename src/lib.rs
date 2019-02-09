@@ -29,6 +29,7 @@ extern crate noisy_float;
 extern crate num_traits;
 extern crate rand;
 extern crate itertools;
+extern crate indexmap;
 
 #[cfg(test)]
 extern crate ndarray_rand;
