@@ -287,3 +287,13 @@ fn check_one_interpolation_method_for_quantiles_axis_mut<I: Interpolate<u64>>(
         checks.into_iter().all(|x| x)
     }
 }
+
+#[test]
+fn test_midpoint_overflow() {
+    // Regression test
+    // This triggered an overflow panic with a naive Midpoint implementation: (a+b)/2
+    let mut a: Array1<u8> = array![129, 130, 130, 131];
+    let median = a.quantile_mut::<Midpoint>(n64(0.5)).unwrap();
+    let expected_median = 130;
+    assert_eq!(median, expected_median);
+}
