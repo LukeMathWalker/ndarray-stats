@@ -2,7 +2,7 @@
 use ndarray::azip;
 use ndarray::prelude::*;
 use noisy_float::types::N64;
-use num_traits::{NumOps, Float, FromPrimitive, ToPrimitive};
+use num_traits::{Float, FromPrimitive, NumOps, ToPrimitive};
 
 /// Used to provide an interpolation strategy to [`quantile_axis_mut`].
 ///
@@ -136,10 +136,10 @@ where
         let mut lower = lower.unwrap();
         let higher = higher.unwrap();
         azip!(
-                mut lower, ref higher in {
-                    *lower = lower.clone() + (higher.clone() - lower.clone()) / denom.clone()
-                }
-            );
+            mut lower, ref higher in {
+                *lower = lower.clone() + (higher.clone() - lower.clone()) / denom.clone()
+            }
+        );
         lower
     }
 }
