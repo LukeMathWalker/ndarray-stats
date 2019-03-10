@@ -2,8 +2,7 @@
 use ndarray::azip;
 use ndarray::prelude::*;
 use noisy_float::types::N64;
-use num_traits::{Float, FromPrimitive, ToPrimitive};
-use std::ops::{Add, Div};
+use num_traits::{Float, FromPrimitive, NumOps, ToPrimitive};
 
 fn float_quantile_index(q: N64, len: usize) -> N64 {
     q * ((len - 1) as f64)
@@ -52,8 +51,8 @@ pub trait Interpolate<T> {
         q: N64,
         len: usize,
     ) -> Array<T, D>
-        where
-            D: Dimension;
+    where
+        D: Dimension;
 }
 
 /// Select the higher value.
@@ -125,8 +124,8 @@ impl<T> Interpolate<T> for Nearest {
 }
 
 impl<T> Interpolate<T> for Midpoint
-    where
-        T: Add<T, Output = T> + Div<T, Output = T> + Clone + FromPrimitive,
+where
+    T: NumOps + Clone + FromPrimitive,
 {
     fn needs_lower(_q: N64, _len: usize) -> bool {
         true
@@ -140,17 +139,24 @@ impl<T> Interpolate<T> for Midpoint
         _q: N64,
         _len: usize,
     ) -> Array<T, D>
-        where
-            D: Dimension,
+    where
+        D: Dimension,
     {
         let denom = T::from_u8(2).unwrap();
-        (lower.unwrap() + higher.unwrap()).mapv_into(|x| x / denom.clone())
+        let mut lower = lower.unwrap();
+        let higher = higher.unwrap();
+        azip!(
+            mut lower, ref higher in {
+                *lower = lower.clone() + (higher.clone() - lower.clone()) / denom.clone()
+            }
+        );
+        lower
     }
 }
 
 impl<T> Interpolate<T> for Linear
-    where
-        T: Add<T, Output = T> + Clone + FromPrimitive + ToPrimitive,
+where
+    T: NumOps + Clone + FromPrimitive + ToPrimitive,
 {
     fn needs_lower(_q: N64, _len: usize) -> bool {
         true
@@ -164,8 +170,8 @@ impl<T> Interpolate<T> for Linear
         q: N64,
         len: usize,
     ) -> Array<T, D>
-        where
-            D: Dimension,
+    where
+        D: Dimension,
     {
         let fraction = float_quantile_index_fraction(q, len).to_f64().unwrap();
         let mut a = lower.unwrap();
