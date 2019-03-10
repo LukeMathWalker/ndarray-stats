@@ -1,4 +1,4 @@
-use self::interpolate::Interpolate;
+use self::interpolate::{higher_index, lower_index, Interpolate};
 use super::sort::get_many_from_sorted_mut_unchecked;
 use indexmap::{IndexMap, IndexSet};
 use ndarray::prelude::*;
@@ -204,57 +204,51 @@ where
 
         let axis_len = self.len_of(axis);
         if axis_len == 0 {
-            None
-        } else {
-            let mut deduped_qs: Vec<N64> = qs.to_vec();
-            deduped_qs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            deduped_qs.dedup();
-
-            // IndexSet preserves insertion order:
-            // - indexes will stay sorted;
-            // - we avoid index duplication.
-            let mut searched_indexes = IndexSet::new();
-            for q in deduped_qs.iter() {
-                if I::needs_lower(*q, axis_len) {
-                    searched_indexes.insert(I::lower_index(*q, axis_len));
-                }
-                if I::needs_higher(*q, axis_len) {
-                    searched_indexes.insert(I::higher_index(*q, axis_len));
-                }
-            }
-            let searched_indexes: Vec<usize> = searched_indexes.into_iter().collect();
-
-            // Retrieve the values corresponding to each index for each slice along the specified axis
-            let values = self.map_axis_mut(axis, |mut x| {
-                get_many_from_sorted_mut_unchecked(&mut x, &searched_indexes)
-            });
-
-            // Combine the retrieved values according to specified interpolation strategy to
-            // get the desired quantiles
-            let mut results = IndexMap::new();
-            for q in qs {
-                let result = I::interpolate(
-                    match I::needs_lower(*q, axis_len) {
-                        true => {
-                            let lower_index = &I::lower_index(*q, axis_len);
-                            Some(values.map(|x| x.get(lower_index).unwrap().clone()))
-                        }
-                        false => None,
-                    },
-                    match I::needs_higher(*q, axis_len) {
-                        true => {
-                            let higher_index = &I::higher_index(*q, axis_len);
-                            Some(values.map(|x| x.get(higher_index).unwrap().clone()))
-                        }
-                        false => None,
-                    },
-                    *q,
-                    axis_len,
-                );
-                results.insert(*q, result);
-            }
-            Some(results)
+            return None;
         }
+
+        let mut deduped_qs: Vec<N64> = qs.to_vec();
+        deduped_qs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        deduped_qs.dedup();
+
+        // IndexSet preserves insertion order:
+        // - indexes will stay sorted;
+        // - we avoid index duplication.
+        let mut searched_indexes = IndexSet::new();
+        for q in deduped_qs.iter() {
+            if I::needs_lower(*q, axis_len) {
+                searched_indexes.insert(lower_index(*q, axis_len));
+            }
+            if I::needs_higher(*q, axis_len) {
+                searched_indexes.insert(higher_index(*q, axis_len));
+            }
+        }
+        let searched_indexes: Vec<usize> = searched_indexes.into_iter().collect();
+
+        // Retrieve the values corresponding to each index for each slice along the specified axis
+        let values = self.map_axis_mut(
+            axis,
+            |mut x| get_many_from_sorted_mut_unchecked(&mut x, &searched_indexes)
+        );
+
+        // Combine the retrieved values according to specified interpolation strategy to
+        // get the desired quantiles
+        let mut results = IndexMap::new();
+        for q in qs {
+            let lower = if I::needs_lower(*q, axis_len) {
+                Some(values.map(|x| x[&lower_index(*q, axis_len)].clone()))
+            } else {
+                None
+            };
+            let higher = if I::needs_higher(*q, axis_len) {
+                Some(values.map(|x| x[&higher_index(*q, axis_len)].clone()))
+            } else {
+                None
+            };
+            let interpolated = I::interpolate(lower, higher, *q, axis_len);
+            results.insert(*q, interpolated);
+        }
+        Some(results)
     }
 
     fn quantile_axis_mut<I>(&mut self, axis: Axis, q: N64) -> Option<Array<A, D::Smaller>>
@@ -276,24 +270,23 @@ where
         S: DataMut,
         I: Interpolate<A::NotNan>,
     {
-        if self.len_of(axis) > 0 {
-            Some(self.map_axis_mut(axis, |lane| {
-                let mut not_nan = A::remove_nan_mut(lane);
-                A::from_not_nan_opt(if not_nan.is_empty() {
-                    None
-                } else {
-                    Some(
-                        not_nan
-                            .quantile_axis_mut::<I>(Axis(0), q)
-                            .unwrap()
-                            .into_raw_vec()
-                            .remove(0),
-                    )
-                })
-            }))
-        } else {
-            None
+        if self.len_of(axis) == 0 {
+            return None;
         }
+        let quantile = self.map_axis_mut(axis, |lane| {
+            let mut not_nan = A::remove_nan_mut(lane);
+            A::from_not_nan_opt(if not_nan.is_empty() {
+                None
+            } else {
+                Some(
+                    not_nan
+                        .quantile_axis_mut::<I>(Axis(0), q)
+                        .unwrap()
+                        .into_scalar(),
+                )
+            })
+        });
+        Some(quantile)
     }
 }
 
