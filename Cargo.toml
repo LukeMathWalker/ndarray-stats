@@ -38,4 +38,5 @@ name = "sort"
 harness = false
 
 [patch.crates-io]
-ndarray = {git = "https://github.com/rust-ndarray/ndarray", branch = "master"}
+ndarray = {git = "https://github.com/LukeMathWalker/ndarray", branch = "re-export-rand-distribution"}
+
